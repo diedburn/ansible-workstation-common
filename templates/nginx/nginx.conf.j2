@@ -34,6 +34,13 @@ http {
     # Load modular configuration files from the /etc/nginx/conf.d directory.
     include /etc/nginx/conf.d/*.conf;
 
+    # Default preventing redirect
+    server {
+	listen 80 default_server;
+        return 200 '<h1 align="center">vHost not found, did you configure nginx correctly?</h1>';
+        add_header Content-Type text/html;
+    }
+
     # Load user files
     include /home/{{ primary_user }}/nginx/*.conf;
 }
