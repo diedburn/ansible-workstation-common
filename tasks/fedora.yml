@@ -29,26 +29,48 @@
     - ansible
     - bzr
     - cloc
+    - dmidecode
+    - dnf-plugins-core
     - filezilla
     - gcc-c++
     - gnome-terminal-nautilus
     - gnome-tweak-tool
+    - gstreamer
+    - gstreamer-plugins-base
     - htop
     - libselinux-python
     - mycli
     - nano
+    - pv
     - python2-mysql
     - python-docker
+    - python3-mysql
     - redhat-rpm-config
     - ruby
     - ruby-devel
+    - snapd
     - sqlite
     - sqlite-devel
+    - sysfsutils
     - terminator
     - vim
     - vim-powerline
     - vlc
-    - zsh
+
+- name: Get system product name
+  shell: "dmidecode -s system-product-name"
+  changed_when: false
+  register: system_product_name
+
+- set_fact:
+    system_is_macmini: true
+  when: system_product_name|lower is search("macmini")
+
+- name: Create snap symlink
+  file:
+    src: /var/lib/snapd/snap
+    dest: /snap
+    state: link
 
 - name: Disable selinux
   selinux: state=disabled
@@ -80,28 +102,12 @@
     state: present
   with_items:
     - java
-    - java-1.8.0-openjdk-devel
+    - java-devel
   when: install_openjdk
 
-- name: Install and configure mariadb
-  block:
-    - name: Install mariadb
-      dnf: name={{ item }} state=present
-      with_items:
-        - mariadb
-        - mariadb-server
-    - name: Start mariadb service
-      systemd: name=mariadb enabled=true state=started
-- name: Set mariadb root password
-  mysql_user: name=root password={{ mysql_root_password }} login_password={{ mysql_old_root_password }}
-  when: mysql_root_password != mysql_old_root_password
-  ignore_errors: true
-- name: Create ~/.my.cnf
-  template:
-    src: templates/mariadb/.my.cnf.j2
-    dest: "/home/{{ primary_user }}/.my.cnf"
-    owner: "{{ primary_user }}"
-    group: "{{ primary_group }}"
+- name: Install mariadb/mysql
+  include_tasks: fedora/mysql.yml
+  tags: mariadb mysql
 
 - name: Install redis
   block:
@@ -110,18 +116,9 @@
     - name: Start redis service
       systemd: name=redis enabled=true state=started
 
-- name: Install mailcatcher
-  gem:
-    name: mailcatcher
-    state: present
-    user_install: false
-- name: Create mailcatcher service
-  template: src=templates/mailcatcher/mailcatcher.service.j2 dest=/usr/lib/systemd/system/mailcatcher.service
-  notify:
-    - systemd
-    - mailcatcher
-- name: Run mailcatcher service
-  systemd: name=mailcatcher enabled=true state=started
+- name: Include fedora/mailcatcher
+  include_tasks: fedora/mailcatcher.yml
+  tags: mailcatcher
 
 - name: Install php
   include_tasks: fedora/php.yml
@@ -130,6 +127,15 @@
 - name: Install nginx
   include_tasks: fedora/nginx.yml
   tags: nginx
+
+- name: Install Node.js
+  include_tasks: fedora/node.yml
+  tags: node
+
+- name: Install awscli
+  include_tasks: fedora/aws.yml
+  when: install_aws
+  tags: aws awscli
 
 - name: Install Docker repository
   template: src=templates/docker/docker-ce.repo dest=/etc/yum.repos.d/docker-ce.repo
@@ -162,6 +168,32 @@
 - name: Install Chrome GNOME Shell integration
   dnf: name=chrome-gnome-shell state=present
   when: install_chrome
+
+- name: Install Macmini wireless driver
+  dnf:
+    name: broadcom-wl
+    state: present
+  when: system_is_macmini
+
+- name: Init /etc/sysfs.d
+  file:
+    path: /etc/sysfs.d
+    state: directory
+
+- name: Set sleep mode to deep
+  copy:
+    content: deep
+    dest: /etc/sysfs.d/mem_sleep.conf
+
+- name: Reverse Apple keyboard fn keys
+  copy:
+    content: options hid_apple fnmode=2
+    dest: /etc/modprobe.d/hid_apple.conf
+  when: reverse_apple_keyboard_fn_keys
+
+- name: Regenerate initramfs
+  shell: "dracut --regenerate-all --force"
+  when: reverse_apple_keyboard_fn_keys
 
 - name: Install Nvidia drivers
   dnf: name={{ item }} state=present
@@ -211,6 +243,14 @@
     - winetricks
   when: install_wine
 
+- name: Install n98-magerun
+  get_url:
+    url: https://files.magerun.net/n98-magerun.phar
+    dest: "/home/{{ primary_user }}/bin/n98-magerun"
+    mode: u=rwx,g=rx,o=rx
+  become: true
+  become_user: "{{ primary_user }}"
+  when: install_magerun
 - name: Install n98-magerun2
   get_url:
     url: https://files.magerun.net/n98-magerun2.phar
@@ -220,31 +260,6 @@
   become_user: "{{ primary_user }}"
   when: install_magerun
 
-- name: Clone oh-my-zsh
-  git:
-    repo: https://github.com/robbyrussell/oh-my-zsh.git
-    dest: "/home/{{ primary_user }}/.oh-my-zsh"
-    clone: true
-    update: true
-    version: master
-  tags:
-    - zsh
-  become: true
-  become_user: "{{ primary_user }}"
-- name: Register .zshrc existence
-  stat: path="/home/{{ primary_user }}/.zshrc"
-  register: zshrc_file
-  become: true
-  become_user: "{{ primary_user }}"
-- name: Copy .zshrc
-  copy:
-    src: "/home/{{ primary_user }}/.oh-my-zsh/templates/zshrc.zsh-template"
-    dest: "/home/{{ primary_user }}/.zshrc"
-    remote_src: true
-  when: not zshrc_file.stat.exists
-  become: true
-  become_user: "{{ primary_user }}"
-- name: Init shell
-  user:
-    name: "{{ primary_user }}"
-    shell: /bin/zsh
+- name: Include common/zsh
+  include_tasks: common/zsh.yml
+  tags: zsh

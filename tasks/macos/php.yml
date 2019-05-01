@@ -1,0 +1,70 @@
+---
+- name: Create php session directory
+  file:
+    path: "{{ php_session_directory }}"
+    state: directory
+
+- name: Install php 7.1
+  homebrew:
+    name: php@7.1
+    state: latest
+  tags: php
+- name: Install php71 ini configuration
+  template: src=templates/php/99-local.ini.j2 dest=/usr/local/etc/php/7.1/conf.d/99-local.ini
+  notify: php71
+  tags: php
+- name: Install php71 fpm configuration
+  vars:
+    - php_fpm_port: 9071
+  template: src=templates/php/www.local.conf.j2 dest=/usr/local/etc/php/7.1/php-fpm.d/www.local.conf
+  notify: php71
+  tags: php
+
+- name: Install php 7.2
+  homebrew:
+    name: php@7.2
+    state: latest
+  tags: php
+- name: Install php72 ini configuration
+  template: src=templates/php/99-local.ini.j2 dest=/usr/local/etc/php/7.2/conf.d/99-local.ini
+  notify: php72
+  tags: php
+- name: Install php72 fpm configuration
+  vars:
+    - php_fpm_port: 9072
+  template: src=templates/php/www.local.conf.j2 dest=/usr/local/etc/php/7.2/php-fpm.d/www.local.conf
+  notify: php72
+  tags: php
+
+- name: Install php 7.3
+  homebrew:
+    name: php@7.3
+    state: latest
+  tags: php
+- name: Install php73 ini configuration
+  template: src=templates/php/99-local.ini.j2 dest=/usr/local/etc/php/7.3/conf.d/99-local.ini
+  tags: php
+- name: Install php73 fpm configuration
+  vars:
+    - php_fpm_port: 9073
+  template: src=templates/php/www.local.conf.j2 dest=/usr/local/etc/php/7.3/php-fpm.d/www.local.conf
+  tags: php
+
+- name: Link php 7.1 as default php
+  shell: "brew link php@7.1 --force"
+  register: brew_link_result
+  changed_when: "'symlinks created' in brew_link_result.stdout"
+
+- name: Create php bin symlinks
+  shell: "ln -fs $(find /usr/local/Cellar/php* -name 'php' -type f | grep {{ item.version }} | head -n 1) /usr/local/bin/{{ item.alias }}"
+  changed_when: false
+  with_items:
+    - { version: 7.1, alias: php71 }
+    - { version: 7.2, alias: php72 }
+    - { version: 7.3, alias: php73 }
+
+- name: Install composer
+  homebrew:
+    name: composer
+    state: present
+  tags: php

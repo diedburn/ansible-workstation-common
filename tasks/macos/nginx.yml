@@ -1,62 +1,65 @@
 ---
-- name: Create nginx temp directory
-  file:
-    path: "{{ nginx_temp_directory }}"
-    state: directory
-    owner: "{{ primary_user }}"
-    group: "{{ primary_group }}"
 - name: Install nginx
-  dnf:
+  homebrew:
     name: nginx
     state: present
   notify: nginx
   tags: nginx
+
+- name: Create nginx conf.d directory
+  file:
+    path: "{{ nginx_root_directory }}/conf.d"
+    state: directory
+    owner: "{{ primary_user }}"
+    group: admin
+  tags: nginx
+
 - name: Install nginx/nginx.conf
   template:
     src: templates/nginx/nginx.conf.j2
-    dest: /etc/nginx/nginx.conf
+    dest: /usr/local/etc/nginx/nginx.conf
   notify: nginx
   tags: nginx
 - name: Install nginx/default.conf
   template:
     src: templates/nginx/default.conf.j2
-    dest: /etc/nginx/default.conf
+    dest: /usr/local/etc/nginx/default.conf
   notify: nginx
   tags: nginx
 - name: Install nginx/magento.conf
   template:
     src: templates/nginx/magento.conf.j2
-    dest: /etc/nginx/magento.conf
+    dest: /usr/local/etc/nginx/magento.conf
   notify: nginx
   tags: nginx
 - name: Install nginx/magento2.conf
   template:
     src: templates/nginx/magento2.conf.j2
-    dest: /etc/nginx/magento2.conf
+    dest: /usr/local/etc/nginx/magento2.conf
   notify: nginx
   tags: nginx
 - name: Install nginx/wordpress.conf
   template:
     src: templates/nginx/wordpress.conf.j2
-    dest: /etc/nginx/wordpress.conf
+    dest: /usr/local/etc/nginx/wordpress.conf
   notify: nginx
   tags: nginx
 - name: Install nginx/wordpress-multisite.conf
   template:
     src: templates/nginx/wordpress-multisite.conf.j2
-    dest: /etc/nginx/wordpress-multisite.conf
+    dest: /usr/local/etc/nginx/wordpress-multisite.conf
   notify: nginx
   tags: nginx
 - name: Install nginx/conf.d/php-fpm.conf
   template:
     src: templates/nginx/php-fpm.conf.j2
-    dest: /etc/nginx/conf.d/php-fpm.conf
+    dest: /usr/local/etc/nginx/conf.d/php-fpm.conf
   notify: nginx
   tags: nginx
 - name: Install nginx/conf.d/mailcatcher.conf
   template:
     src: templates/nginx/mailcatcher.conf.j2
-    dest: /etc/nginx/conf.d/mailcatcher.conf
+    dest: /usr/local/etc/nginx/conf.d/mailcatcher.conf
   notify: nginx
   tags: nginx
 - name: Install nginx/php.conf
@@ -65,46 +68,26 @@
     dest: "{{ nginx_root_directory }}/php.conf"
   notify: nginx
   tags: nginx
-- name: Start nginx service
-  systemd:
-    name: nginx
-    enabled: true
-    state: started
-  tags: nginx
-
-- name: Install nginx_config_reloader
-  pip:
-    name: git+https://github.com/ByteInternet/nginx_config_reloader#egg=nginx_config_reloader
-    state: present
-  tags: nginx
-- name: Create nginx_config_reloader service
-  template:
-    src: templates/nginx_config_reloader/nginx-config-reloader.service
-    dest: /usr/lib/systemd/system/nginx-config-reloader.service
-  notify:
-    - systemd
-    - nginx-config-reloader
-  tags: nginx
-- name: Run nginx-config-reloader service
-  systemd:
-    name: nginx-config-reloader
-    enabled: true
-    state: started
-  tags: nginx
 - name: Create /var/www/html/default
   file:
-    path: "{{ nginx_www_path }}/default"
+    path: "{{ nginx_www_path }}/default/"
     state: directory
     owner: "{{ primary_user }}"
     group: "{{ primary_group }}"
     mode: 0755
-  become: true
   tags: nginx
 - name: Create default server page
   copy:
     src: files/nginx/index.html
-    dest: "{{ nginx_www_path }}/default"
+    dest: "{{ nginx_www_path }}/default/"
     owner: "{{ primary_user }}"
     group: "{{ primary_group }}"
     mode: 0755
+  tags: nginx
+
+- name: Start nginx service
+  shell: "{{ homebrew_executable }} services start nginx"
+  register: brew_service_result
+  changed_when: "'Successfully started `nginx`' in brew_service_result.stdout"
+  become: true
   tags: nginx
